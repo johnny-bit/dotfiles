@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+fnumber=$(exiftool -aperture $1 | cut -d':' -f2)
+exposure=$(exiftool -shutterspeed $1 | cut -d':' -f2)
+iso=$(exiftool -iso $1 | cut -d':' -f2)
+#mogrify -gravity South -background Black \
+#-font mononoki-Regular -pointsize 50 -fill White \
+#-splice 0x54 -annotate 0x0 "Aperture:$fnumber Shutter speed:$exposure ISO:$iso" $1
+mogrify -gravity South -pointsize 30 -fill white -stroke black -annotate +0+0 "Aperture:$fnumber Shutter speed:$exposure ISO:$iso" $1
