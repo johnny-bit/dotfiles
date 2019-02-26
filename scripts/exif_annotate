@@ -1,8 +1,135 @@
 #!/usr/bin/env bash
-fnumber=$(exiftool -aperture $1 | cut -d':' -f2 | tr -d '[:space:]')
-exposure=$(exiftool -shutterspeed $1 | cut -d':' -f2 | tr -d '[:space:]')
-iso=$(exiftool -iso $1 | cut -d':' -f2 | tr -d '[:space:]')
-#mogrify -gravity South -background Black \
-#-font mononoki-Regular -pointsize 50 -fill White \
-#-splice 0x54 -annotate 0x0 "Aperture:$fnumber Shutter speed:$exposure ISO:$iso" $1
-mogrify -gravity South -pointsize 30 -fill white -stroke black -annotate +0+0 "f/$fnumber ${exposure}s ISO$iso" $1
+
+#!/bin/bash
+# saner programming env: these switches turn some bugs into errors
+set -o errexit -o pipefail -o noclobber -o nounset
+
+! getopt --test > /dev/null 
+if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
+    echo 'I’m sorry, `getopt --test` failed in this environment.'
+    exit 1
+fi
+
+OPTIONS=asifo:v
+LONGOPTS=aperture,shutter,iso,focal,output:,verbose
+
+DEFOPTS=( a s i f )
+OPTS=()
+
+# -use ! and PIPESTATUS to get exit code with errexit set
+# -temporarily store output to be able to check for errors
+# -activate quoting/enhanced mode (e.g. by writing out “--options”)
+# -pass arguments only via   -- "$@"   to separate them correctly
+! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    # e.g. return value is 1
+    #  then getopt has complained about wrong arguments to stdout
+    exit 2
+fi
+# read getopt’s output this way to handle the quoting right:
+eval set -- "$PARSED"
+
+a=n s=n i=n f=n outFile=-
+# now enjoy the options in order and nicely split until we see --
+while true; do
+    case "$1" in
+        -a|--aperture)
+            if [ $a = 'y' ]; then
+              echo "Duplicated param!";
+              exit 3
+            fi
+            OPTS+=(a)
+            a=y
+            shift
+            ;;
+        -s|--shutter)
+            if [ $s = 'y' ]; then
+              echo "Duplicated param!";
+              exit 3
+            fi
+            OPTS+=(s)
+            s=y
+            shift
+            ;;
+        -i|--iso)
+            if [ $i = 'y' ]; then
+              echo "Duplicated param!";
+              exit 3
+            fi
+            OPTS+=(i)
+            i=y
+            shift
+            ;;
+        -f|--focal)
+            if [ $f = 'y' ]; then
+              echo "Double param!";
+              exit 3
+            fi
+            OPTS+=(f)
+            f=y
+            shift
+            ;;
+        -o|--output)
+            outFile="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Programming error"
+            exit 3
+            ;;
+    esac
+done
+
+#handle empty opts
+
+if [[ ${#OPTS[@]} -lt 1 ]]; then
+    for opt in "${DEFOPTS[@]}"; do
+       OPTS+=($opt)
+    done
+fi
+
+# handle non-option arguments
+if [[ $# -ne 1 ]]; then
+    echo "$0: A single input file is required."
+    exit 4
+fi
+
+caption=''
+
+for opt in "${OPTS[@]}"; do
+    case $opt in
+      a)
+       fnumber=$(exiftool -aperture $1 | cut -d':' -f2 | tr -d '[:space:]')
+       caption+="f/${fnumber} "
+       ;;
+      s)
+       exposure=$(exiftool -shutterspeed $1 | cut -d':' -f2 | tr -d '[:space:]')
+       caption+="${exposure}s "
+       ;;
+      i)
+        iso=$(exiftool -iso $1 | cut -d':' -f2 | tr -d '[:space:]')
+        caption+="ISO${iso} "
+        ;;
+      f)
+       focal=$(exiftool -focallength $1 | cut -d':' -f2 | tr -d '[:space:]')
+       caption+="${focal//.0} "
+       ;;
+      *)
+       echo  "DA FUCK?"
+       exit 5
+       ;;
+    esac
+done
+
+caption="${caption%"${caption##*[![:space:]]}"}"
+
+
+if [[ "$outFile" == "-" ]]; then
+mogrify -gravity South -pointsize 30 -fill white -stroke black -annotate +0+0 "$caption" $1
+else
+convert -gravity South -pointsize 30 -fill white -stroke black -annotate +0+0 "$caption" $1 $outFile
+fi
